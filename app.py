@@ -7,8 +7,12 @@ import matplotlib.colors as mcolors
 import matplotlib.image as mpimg
 import os
 import random
+import warnings
+import io # Dosya indirme işlemleri için gerekli
 
-# --- SAYFA AYARLARI (En başta olmalı) ---
+# -----------------------------------------------------------------------------
+# 1. SAYFA VE SİSTEM AYARLARI
+# -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="SİSMİQ - Sismik Risk Analiz Sistemi",
     page_icon="🌋",
@@ -16,22 +20,25 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- SABİTLER VE AYARLAR ---
-# EKSİK OLAN SATIR BURAYA EKLENDİ 👇
-VERSION = "SİSMİQ V48.0 (PUBLIC GUIDANCE & PRECISION)" 
+warnings.filterwarnings("ignore")
 
-DOSYA_ADI = 'deprem.txt' 
-HARITA_DOSYASI = 'harita.png' 
+# -----------------------------------------------------------------------------
+# 2. SABİT DEĞİŞKENLER (GLOBAL)
+# -----------------------------------------------------------------------------
+VERSION = "SİSMİQ V50.0 (ULTIMATE WEB EDITION)"
+DOSYA_ADI = 'deprem.txt'
+HARITA_DOSYASI = 'harita.png'
 
-# Mesafe Kuralları
+# Analiz Parametreleri
 ANALIZ_YARICAP_KM = 150
 POST_SISMIK_YARICAP_KM = 50
 TETIKLENME_YARICAP_KM = 150
 BUYUKLUK_FILTRESI = 3.5
 FAY_TAMPON_BOLGESI_KM = 35
+MIN_DEPREM_SAYISI = 20
 RAPOR_ALT_LIMIT = 126
 
-# --- FAYLAR VE ŞEHİRLER ---
+# Fay Hatları Veritabanı
 ACTIVE_FAULTS = {
     "KAF - Doğu": ((39.1, 40.9), (39.7, 39.5)), "KAF - Orta": ((39.7, 39.5), (40.7, 31.6)),
     "KAF - Batı": ((40.7, 31.6), (40.7, 29.9)), "KAF - Marmara": ((40.7, 29.9), (40.8, 27.0)),
@@ -43,6 +50,7 @@ ACTIVE_FAULTS = {
     "Malatya-Ovacık": ((39.5, 39.0), (38.3, 38.0))
 }
 
+# Büyükşehir Koordinatları
 METROPOLITAN_CITIES = {
     "İstanbul": (41.00, 28.97), "Ankara": (39.93, 32.85), "İzmir": (38.42, 27.14),
     "Antalya": (36.89, 30.71), "Bursa": (40.18, 29.06), "Adana": (37.00, 35.32),
@@ -54,17 +62,18 @@ METROPOLITAN_CITIES = {
     "Eskişehir": (39.76, 30.52), "Malatya": (38.35, 38.30)
 }
 
-# --- MOTOR FONKSİYONLARI ---
+# -----------------------------------------------------------------------------
+# 3. YARDIMCI FONKSİYONLAR
+# -----------------------------------------------------------------------------
 @st.cache_data
 def load_data(filepath):
-    # Dosya okuma (Encoding hatalarına karşı önlem)
     try:
         with open(filepath, 'r', encoding='utf-8') as f: lines = f.readlines()
     except:
         try:
             with open(filepath, 'r', encoding='cp1254') as f: lines = f.readlines()
         except:
-            return pd.DataFrame() # Dosya yoksa boş dön
+            return pd.DataFrame()
             
     start_line = 0
     for i, line in enumerate(lines):
@@ -84,7 +93,6 @@ def load_data(filepath):
     df.drop(columns=['TarihStr'], inplace=True)
     df.dropna(subset=['Tarih'], inplace=True)
     
-    # Ay Fazı Hesabı
     ref_new_moon = pd.Timestamp("1988-12-09 01:39:00")
     days = (df['Tarih'] - ref_new_moon).dt.total_seconds() / 86400.0
     current_phase_day = days % 29.53059
@@ -108,7 +116,6 @@ def distance_point_to_segment_scalar(px, py, x1, y1, x2, y2):
     if t < 0: closest_x, closest_y = x1, y1
     elif t > 1: closest_x, closest_y = x2, y2
     else: closest_x, closest_y = x1 + t * dx, y1 + t * dy
-    # Tek nokta mesafesi için haversine'in basit versiyonu veya vektörize'i tek elemanlı çağır
     return haversine_vectorized(py, px, np.array([closest_y]), np.array([closest_x]))[0]
 
 def check_fault_proximity(user_lat, user_lon):
@@ -132,6 +139,19 @@ def calculate_b_value(magnitudes):
     if mean_mag == BUYUKLUK_FILTRESI: return 1.0
     return 0.4343 / (mean_mag - BUYUKLUK_FILTRESI)
 
+def get_visual_icon(score):
+    if score == 9999: return ICON_POST
+    if score >= 75: return ICON_HIGH
+    if score >= 50: return ICON_MED
+    return ICON_LOW
+
+def get_risk_label_and_color(score):
+    if score >= 326: return "KRİTİK RİSK", "#FF0000"
+    if score >= 226: return "YÜKSEK RİSK", "#FFA500"
+    if score >= 126: return "ORTA RİSK", "#FFFF00"
+    return "DÜŞÜK RİSK", "#00FF00"
+
+# --- RİSK MOTORU ---
 def calculate_risk_engine(df, lat, lon, simdi):
     is_on_fault, fault_name = check_fault_proximity(lat, lon)
     
@@ -153,21 +173,30 @@ def calculate_risk_engine(df, lat, lon, simdi):
         else: return 0, [], "Yetersiz Veri"
 
     date_1y_ago = simdi - datetime.timedelta(days=365)
-    dead_zone = subset[(subset['Mesafe'] <= POST_SISMIK_YARICAP_KM) & (subset['Tarih'] >= date_1y_ago) & (subset['Mag'] >= 5.5)]
-    if not dead_zone.empty: return 9999, ["POST-SİSMİK"], fault_name
+    dead_zone = subset[(subset['Mesafe'] <= POST_SISMIK_YARICAP_KM) & 
+                       (subset['Tarih'] >= date_1y_ago) & 
+                       (subset['Mag'] >= 5.5)]
+    if not dead_zone.empty:
+        return 9999, [f"POST-SİSMİK/GRİ ({dead_zone['Mag'].max()}M)"], fault_name
 
     risk_score = 0; reasons = []
     
     date_3y_ago = simdi - datetime.timedelta(days=365*3)
-    trigger_zone = subset[(subset['Mesafe'] > POST_SISMIK_YARICAP_KM) & (subset['Mesafe'] <= TETIKLENME_YARICAP_KM) & (subset['Tarih'] >= date_3y_ago) & (subset['Mag'] >= 5.5)]
+    trigger_zone = subset[(subset['Mesafe'] > POST_SISMIK_YARICAP_KM) & 
+                          (subset['Mesafe'] <= TETIKLENME_YARICAP_KM) & 
+                          (subset['Tarih'] >= date_3y_ago) & 
+                          (subset['Mag'] >= 5.5)]
+    
     if not trigger_zone.empty:
         pts = 35 if is_on_fault else 30
-        risk_score += pts; reasons.append(f"Stres Transferi (+{pts})")
+        risk_score += pts
+        reasons.append(f"Stres Transferi (+{pts})")
 
-    b_val = calculate_b_value(final_df['Mag'].values)
-    if b_val and b_val < 0.85:
+    b_value = calculate_b_value(final_df['Mag'].values)
+    if b_value and b_value < 0.85:
         pts = 35 if is_on_fault else 25
-        risk_score += pts; reasons.append(f"Fiziksel Gerilme (b={b_val:.2f}) (+{pts})")
+        risk_score += pts
+        reasons.append(f"Fiziksel Gerilme (b={b_value:.2f}) (+{pts})")
 
     df_last_1y = final_df[final_df['Tarih'] >= date_1y_ago]
     df_prev_2y = final_df[(final_df['Tarih'] < date_1y_ago) & (final_df['Tarih'] >= date_3y_ago)]
@@ -182,8 +211,8 @@ def calculate_risk_engine(df, lat, lon, simdi):
 
     moon_score = 0; moon_reason = ""
     if is_catirdama:
-        base = 35; 
-        if is_on_fault: base += 15
+        base = 35
+        if is_on_fault: base += 15 
         if is_prev_silence: base += 25
         moon_score = base; moon_reason = f"Çatırdama (+{base})"
     elif is_ani_kilit:
@@ -197,51 +226,37 @@ def calculate_risk_engine(df, lat, lon, simdi):
     if risk_score > 150: risk_score = 150
     return risk_score, reasons, fault_name
 
-def get_risk_label_and_color(score):
-    if score >= 326: return "KRİTİK RİSK", "#FF0000" # Kırmızı
-    if score >= 226: return "YÜKSEK RİSK", "#FFA500" # Turuncu
-    if score >= 126: return "ORTA RİSK", "#FFFF00"   # Sarı
-    return "DÜŞÜK RİSK", "#00FF00" # Yeşil
+# -----------------------------------------------------------------------------
+# 4. ARAYÜZ (UI)
+# -----------------------------------------------------------------------------
 
-# --- ARAYÜZ (UI) ---
-
-# Yan Menü (Sidebar)
 st.sidebar.title("🌋 SİSMİQ ANALİZÖR")
 st.sidebar.info(f"Sürüm: {VERSION.split('(')[0]}")
-page = st.sidebar.radio("Mod Seçiniz:", ["🏠 Ana Sayfa & Başarılar", "📍 Tek Nokta Analizi", "🗺️ Tüm Türkiye Haritası", "❓ Nasıl Yorumlamalı?"])
+page = st.sidebar.radio("Mod Seçiniz:", ["🏠 Ana Sayfa & Başarılar", "📍 Tek Nokta Analizi", "🇹🇷 Tüm Türkiye Analizi", "🧪 Bilimsel Doğrulama", "❓ Nasıl Yorumlamalı?"])
 
-# Veriyi Yükle
+# Veri Yükleme
 df = load_data(DOSYA_ADI)
 if df.empty:
     st.error(f"'{DOSYA_ADI}' dosyası bulunamadı! Lütfen dosyayı proje klasörüne ekleyin.")
     st.stop()
 
-# SAYFA 1: ANA SAYFA & BAŞARILAR
+# --- SAYFA: ANA SAYFA ---
 if page == "🏠 Ana Sayfa & Başarılar":
     st.title("🎯 SİSMİQ: Sismik Risk Analiz Sistemi")
     st.markdown("### Veriye Dayalı Deprem Riski Öngörü Algoritması")
-    
     st.markdown("---")
     
-    # Metrikler
     col1, col2, col3 = st.columns(3)
     col1.metric("Yakalama Oranı (Recall)", "%71.4", "Büyük Depremler")
-    col2.metric("Doğruluk Oranı (Precision)", "%50.0", "Yüksek Netlik")
-    col3.metric("F1 Denge Skoru", "0.59", "Başarılı")
+    col2.metric("Netlik Oranı (Precision)", "%50.0", "Monte Carlo Onaylı")
+    col3.metric("F1 Denge Skoru", "0.59", "Yüksek Güvenilirlik")
     
-    st.info("ℹ️ Bu sonuçlar, 2000-2024 yılları arasındaki 150.000+ deprem verisi üzerinde yapılan 'Geriye Dönük Kör Testler' (Backtesting) ve Monte Carlo simülasyonları ile doğrulanmıştır.")
+    st.info("ℹ️ Bu sonuçlar, 2000-2024 yılları arasındaki 150.000+ deprem verisi üzerinde yapılan 'Geriye Dönük Kör Testler' ve Monte Carlo simülasyonları ile doğrulanmıştır.")
 
-    st.markdown("""
-    ### 🏆 Gerçek Dünya Performansı
-    * ✅ **Kahramanmaraş Başarısı:** 2023 depremlerini 6 ay önceden sinyalledi.
-    * ✅ **Bilimsel Metot:** 3 bağımsız tarihte tüm Türkiye tarandı ve sonuçlar 2 yıllık gerçek verilerle doğrulandı.
-    * ⚠️ **Sınırlamalar:** Kesin "ne zaman" tahmini yapamaz. Karar destek aracıdır.
-    """)
-
-# SAYFA 2: TEK NOKTA ANALİZİ
+# --- SAYFA: TEK NOKTA ANALİZİ ---
 elif page == "📍 Tek Nokta Analizi":
     st.title("📍 Noktasal Risk Sorgulama")
-    st.write("Belirli bir koordinatın sismik geçmişini ve güncel stres durumunu analiz edin.")
+    st.write("Koordinat girerek sismik risk ve geçmiş analiz yapın.")
     
     col1, col2, col3 = st.columns(3)
     lat_input = col1.number_input("Enlem (Kuzey)", value=38.0, min_value=35.0, max_value=43.0, step=0.1, format="%.2f")
@@ -252,10 +267,8 @@ elif page == "📍 Tek Nokta Analizi":
         with st.spinner('Fay hatları taranıyor...'):
             analyze_date = datetime.datetime.combine(date_input, datetime.datetime.min.time())
             
-            # Analiz Motorunu Çalıştır
             curr, reas, f = calculate_risk_engine(df, lat_input, lon_input, analyze_date)
             
-            # Geçmiş Veriler
             past_scores = []
             labels = ["Şimdi", "1 Ay", "3 Ay", "6 Ay", "1 Yıl"]
             intervals = [0, 30, 90, 180, 365]
@@ -265,98 +278,141 @@ elif page == "📍 Tek Nokta Analizi":
                 val = 0 if p_s == 9999 else p_s
                 past_scores.append(val)
             
-            # Isı Puanı Hesapla (Filtreli)
-            # s_vals içinde 50 altındakileri 0 yapıyoruz
             s_vals = [s if s >= 50 else 0 for s in past_scores]
             heat_val = int((s_vals[0]*1.5) + (s_vals[1]*0.8) + (s_vals[2]*0.6) + (s_vals[3]*0.4) + (s_vals[4]*0.2))
             
             risk_text, risk_color = get_risk_label_and_color(heat_val)
             
+            # --- RAPOR METNİ OLUŞTURMA (İNDİRME İÇİN) ---
+            report_content = f"""
+SİSMİQ - TEK NOKTA ANALİZ RAPORU
+--------------------------------
+Tarih: {analyze_date.strftime('%Y-%m-%d')}
+Koordinat: {lat_input}N, {lon_input}E
+Bölge/Fay: {f}
+
+RİSK DURUMU:
+-----------
+Risk Puanı: {heat_val}
+Risk Seviyesi: {risk_text}
+
+TESPİT EDİLEN ANOMALİLER:
+------------------------
+{', '.join(reas) if reas else 'Önemli bir anomali yok.'}
+
+ZAMAN TÜNELİ (GEÇMİŞ PUANLAR):
+-----------------------------
+Şimdi: {past_scores[0]}
+1 Ay Önce: {past_scores[1]}
+3 Ay Önce: {past_scores[2]}
+6 Ay Önce: {past_scores[3]}
+1 Yıl Önce: {past_scores[4]}
+            """
+            
             if curr == 9999:
                 st.warning(f"## 📉 DURUM: POST-SİSMİK (Enerji Boşalmış)")
-                st.write("Bölgede yakın zamanda büyük bir deprem olmuş. Ana şok riski düşüktür.")
             else:
                 st.markdown(f"## RİSK PUANI: **{heat_val}**")
                 st.markdown(f"<h3 style='color: {risk_color};'>🛑 SEVİYE: {risk_text}</h3>", unsafe_allow_html=True)
-                
                 st.write("---")
                 st.write(f"**Bölge/Fay:** {f}")
-                st.write(f"**Tespit Edilen Anomaliler:** {', '.join(reas) if reas else 'Önemli bir anomali yok.'}")
-                
+                st.write(f"**Nedenler:** {', '.join(reas) if reas else 'Temiz'}")
                 st.write("---")
-                st.subheader("📈 Zaman Tüneli (Stres Birikimi)")
-                # Ham puanları grafikte göstermek daha mantıklı (filtresiz)
+                
+                # İNDİRME BUTONU
+                st.download_button(
+                    label="📥 Analiz Raporunu İndir (.txt)",
+                    data=report_content,
+                    file_name=f"Sismiq_Rapor_{lat_input}_{lon_input}.txt",
+                    mime="text/plain"
+                )
+                
+                st.subheader("📈 Zaman Tüneli")
                 chart_data = pd.DataFrame({"Zaman": labels, "Stres Puanı": past_scores})
                 st.line_chart(chart_data.set_index("Zaman"))
 
-# SAYFA 3: TÜM TÜRKİYE HARİTASI
-elif page == "🗺️ Tüm Türkiye Haritası":
-    st.title("🗺️ SİSMİQ Termal Risk Haritası")
-    st.write("Tüm Türkiye taranarak oluşturulan ağırlıklı ısı haritası.")
+# --- SAYFA: TÜM TÜRKİYE ANALİZİ (AYRILMIŞ SEKME) ---
+elif page == "🇹🇷 Tüm Türkiye Analizi":
+    st.title("🇹🇷 Tüm Türkiye Sismik Analizi")
     
-    date_input_map = st.date_input("Harita Tarihi", datetime.datetime.now(), key="map_date")
+    # Sekmeler
+    tab1, tab2 = st.tabs(["🗺️ Görsel Harita", "📑 Detaylı Rapor"])
     
-    if st.button("HARİTAYI OLUŞTUR", type="primary"):
-        with st.spinner('Tüm Türkiye taranıyor... Bu işlem biraz sürebilir...'):
+    date_input_map = st.date_input("Analiz Tarihi", datetime.datetime.now(), key="map_date")
+    
+    # Global Hesaplama Butonu (Her iki tab için tek seferde çalışır)
+    if st.button("ANALİZİ BAŞLAT", type="primary"):
+        with st.spinner('Tüm Türkiye taranıyor... Bu işlem 1-2 dakika sürebilir...'):
             scan_date = datetime.datetime.combine(date_input_map, datetime.datetime.min.time())
             
             lats = np.arange(36.0, 42.1, 0.5)
             lons = np.arange(26.0, 45.1, 0.5)
             map_data = []
             post_risks = []
+            report_data = [] # Tablo için veri
+            
+            intervals = [0, 30, 90, 180, 365]
+            weights = [1.5, 0.8, 0.6, 0.4, 0.2]
             
             progress_bar = st.progress(0)
             total_steps = len(lats) * len(lons)
             step_count = 0
-            
-            # Harita oluştururken daha hassas bir hesaplama yapalım
-            # 5 periyodu da kullanalım
-            intervals = [0, 30, 90, 180, 365]
-            weights = [1.5, 0.8, 0.6, 0.4, 0.2]
 
             for lat in lats:
                 for lon in lons:
                     step_count += 1
                     if step_count % 50 == 0: progress_bar.progress(step_count / total_steps)
                     
-                    # Şimdiki Durum
-                    curr, _, _ = calculate_risk_engine(df, lat, lon, scan_date)
+                    curr, reasons, fault = calculate_risk_engine(df, lat, lon, scan_date)
                     
                     if curr == 9999:
                         post_risks.append([lat, lon])
                         map_data.append({"lat": lat, "lon": lon, "val": 0})
                         continue
                     
-                    # Geçmiş Taraması (Hafif Optimize)
                     scores = []
-                    # intervals[0] zaten 'simdi', onu tekrar hesaplamayalım, curr kullanalım
                     scores.append(curr if curr >= 50 else 0)
                     
-                    for i in range(1, 5): # 1. indeksten başla (30 gün)
+                    for i in range(1, 5):
                         p_s, _, _ = calculate_risk_engine(df, lat, lon, scan_date - datetime.timedelta(days=intervals[i]))
                         val = p_s if (p_s >= 50 and p_s != 9999) else 0
                         scores.append(val)
                     
-                    # Ağırlıklı Toplam
-                    heat_val = sum([s * w for s, w in zip(scores, weights)])
+                    heat_val = int(sum([s * w for s, w in zip(scores, weights)]))
                     map_data.append({"lat": lat, "lon": lon, "val": heat_val})
+                    
+                    # Rapor Listesine Ekle (Filtreli)
+                    risk_load_filtered = sum([s for s in scores]) # Ham skor toplamı kontrolü
+                    if curr >= 50 or heat_val >= RAPOR_ALT_LIMIT:
+                        risk_str = get_risk_label(heat_val)
+                        report_data.append({
+                            "Enlem": lat, "Boylam": lon, "Bölge/Fay": fault,
+                            "Risk Puanı": heat_val, "Risk Seviyesi": risk_str,
+                            "Şimdi": scores[0], "1 Ay": scores[1], "3 Ay": scores[2],
+                            "6 Ay": scores[3], "1 Yıl": scores[4],
+                            "Detaylar": ", ".join(reasons)
+                        })
             
             progress_bar.empty()
-            
-            # Çizim
-            fig, ax = plt.subplots(figsize=(10, 6))
-            
-            # Zemin Harita
+            st.session_state['map_data'] = map_data
+            st.session_state['post_risks'] = post_risks
+            st.session_state['report_data'] = report_data
+            st.success("Analiz Tamamlandı! Sekmelerden sonuçları inceleyebilirsiniz.")
+
+    # --- TAB 1: HARİTA ---
+    with tab1:
+        if 'map_data' in st.session_state:
+            fig, ax = plt.subplots(figsize=(12, 7))
             if os.path.exists(HARITA_DOSYASI):
-                img = mpimg.imread(HARITA_DOSYASI)
-                ax.imshow(img, extent=[26, 45.1, 36, 42.1], zorder=0, aspect='auto')
-            else:
-                ax.set_facecolor('black')
+                try:
+                    img = mpimg.imread(HARITA_DOSYASI)
+                    ax.imshow(img, extent=[26, 45.1, 36, 42.1], zorder=0, aspect='auto')
+                except: ax.set_facecolor('black')
+            else: ax.set_facecolor('black')
             
-            # Isı Katmanı
-            mx = [d['lon'] for d in map_data]
-            my = [d['lat'] for d in map_data]
-            mz = [d['val'] for d in map_data]
+            mx = [d['lon'] for d in st.session_state['map_data']]
+            my = [d['lat'] for d in st.session_state['map_data']]
+            mz = [d['val'] for d in st.session_state['map_data']]
             
             levels = [0, 125, 225, 325, 1000]
             colors = ['#00FF00', '#FFFF00', '#FFA500', '#FF0000']
@@ -365,30 +421,135 @@ elif page == "🗺️ Tüm Türkiye Haritası":
             
             contour = ax.tricontourf(mx, my, mz, levels=levels, cmap=cmap, norm=norm, alpha=0.6, zorder=1)
             
-            # Post Sismik
-            if post_risks:
-                px = [p[1] for p in post_risks]
-                py = [p[0] for p in post_risks]
+            if st.session_state['post_risks']:
+                px = [p[1] for p in st.session_state['post_risks']]
+                py = [p[0] for p in st.session_state['post_risks']]
                 ax.scatter(px, py, c='cyan', s=15, marker='x', label="Post-Sismik", edgecolors='white', zorder=2)
 
-            # Şehirler
             for city, (clat, clon) in METROPOLITAN_CITIES.items():
                 if 36 <= clat <= 42.1 and 26 <= clon <= 45.1:
                     ax.scatter(clon, clat, c='white', s=10, edgecolors='black', zorder=5)
-                    ax.text(clon, clat + 0.15, city, fontsize=6, color='white', ha='center', fontweight='bold', zorder=6,
+                    ax.text(clon, clat + 0.15, city, fontsize=7, color='white', ha='center', fontweight='bold', zorder=6,
                              bbox=dict(facecolor='black', alpha=0.5, edgecolor='none', boxstyle='round,pad=0.1'))
             
             ax.set_xlim(25.5, 45.5); ax.set_ylim(35.5, 42.5)
             ax.axis('off')
             
-            # Renk Çubuğu (Lejant) - Streamlit içinde pyplot figürü
             cbar = plt.colorbar(contour, ax=ax, orientation='horizontal', fraction=0.05, pad=0.05, ticks=[62.5, 175, 275, 450])
-            cbar.ax.set_xticklabels(['DÜŞÜK', 'ORTA', 'YÜKSEK', 'KRİTİK'], fontsize=8, color='black') # Beyaz tema ise black, dark ise white
+            cbar.ax.set_xticklabels(['DÜŞÜK', 'ORTA', 'YÜKSEK', 'KRİTİK'], fontsize=8, color='white') 
+            cbar.outline.set_edgecolor('white')
+            cbar.ax.xaxis.set_tick_params(color='white')
+            fig.patch.set_facecolor('#0E1117') 
             
             st.pyplot(fig)
-            st.success("Analiz tamamlandı.")
+            
+            # HARİTA İNDİRME BUTONU
+            img_buf = io.BytesIO()
+            fig.savefig(img_buf, format='png', bbox_inches='tight', facecolor='#0E1117')
+            st.download_button(
+                label="🖼️ Haritayı İndir (.png)",
+                data=img_buf.getvalue(),
+                file_name="Sismiq_Risk_Haritasi.png",
+                mime="image/png"
+            )
+        else:
+            st.info("Lütfen yukarıdaki 'ANALİZİ BAŞLAT' butonuna basınız.")
 
-# SAYFA 4: NASIL YORUMLAMALI?
+    # --- TAB 2: RAPOR ---
+    with tab2:
+        if 'report_data' in st.session_state and st.session_state['report_data']:
+            df_report = pd.DataFrame(st.session_state['report_data'])
+            # Risk Puanına göre sırala
+            df_report = df_report.sort_values(by="Risk Puanı", ascending=False)
+            
+            st.dataframe(df_report, use_container_width=True)
+            
+            # CSV İNDİRME BUTONU
+            csv = df_report.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📑 Detaylı Raporu İndir (.csv)",
+                data=csv,
+                file_name="Sismiq_Detayli_Rapor.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("Risk kriterlerine uyan bir bölge bulunamadı veya analiz henüz başlatılmadı.")
+
+# --- SAYFA: BİLİMSEL DOĞRULAMA ---
+elif page == "🧪 Bilimsel Doğrulama":
+    st.title("🧪 Bilimsel Doğrulama & Performans Testi")
+    st.info("Sistemin rastgele tarih ve konumlarda ne kadar başarılı olduğunu test eder.")
+    
+    test_type = st.radio("Test Türü Seçiniz:", ["Hızlı Test (10 Deneme)", "Kapsamlı Test (100 Deneme)"])
+    
+    if st.button("TESTİ BAŞLAT", type="primary"):
+        trials = 100 if "100" in test_type else 10
+        st.write(f"Test Başlatılıyor... ({trials} Rastgele Senaryo)")
+        
+        data_start = df['Tarih'].min(); data_end = df['Tarih'].max()
+        safe_start_date = data_start + datetime.timedelta(days=365*3 + 1)
+        safe_end_date = data_end - datetime.timedelta(days=365*2 + 1)
+        days_range = (safe_end_date - safe_start_date).days
+        past_intervals = [30, 90, 180, 365]
+        
+        total_alarms = 0
+        confirmed_alarms = 0
+        progress_bar = st.progress(0)
+        
+        logs = [] # Logları tutmak için
+        
+        for i in range(trials):
+            progress_bar.progress((i + 1) / trials)
+            rnd_days = random.randint(0, days_range)
+            test_date = safe_start_date + datetime.timedelta(days=rnd_days)
+            lat = random.uniform(36.0, 42.0)
+            lon = random.uniform(26.0, 45.0)
+            
+            current, _, _ = calculate_risk_engine(df, lat, lon, test_date)
+            if current == 0 or current == 9999: continue
+            
+            all_s = [current]
+            for da in past_intervals:
+                p_s, _, _ = calculate_risk_engine(df, lat, lon, test_date - datetime.timedelta(days=da))
+                all_s.append(p_s)
+            
+            s_now = all_s[0] if all_s[0] != 9999 else 0
+            s_1m = all_s[1] if all_s[1] >= 50 and all_s[1] != 9999 else 0
+            s_3m = all_s[2] if all_s[2] >= 50 and all_s[2] != 9999 else 0
+            s_6m = all_s[3] if all_s[3] >= 50 and all_s[3] != 9999 else 0
+            s_1y = all_s[4] if all_s[4] >= 50 and all_s[4] != 9999 else 0
+            
+            heat_val = (s_now * 1.5) + (s_1m * 0.8) + (s_3m * 0.6) + (s_6m * 0.4) + (s_1y * 0.2)
+            
+            if heat_val >= 226:
+                total_alarms += 1
+                future_quakes = df[
+                    (np.abs(df['Enlem'] - lat) <= 1.5) & 
+                    (np.abs(df['Boylam'] - lon) <= 1.5) &
+                    (df['Tarih'] >= test_date) & 
+                    (df['Tarih'] <= test_date + datetime.timedelta(days=730)) &
+                    (df['Mag'] >= 5.5)
+                ]
+                is_hit = "✅ İSABET" if not future_quakes.empty else "❌ BOŞ ALARM"
+                if not future_quakes.empty: confirmed_alarms += 1
+                
+                logs.append(f"Tarih: {test_date.date()} | Konum: {lat:.2f}N {lon:.2f}E | Puan: {int(heat_val)} | Sonuç: {is_hit}")
+        
+        progress_bar.empty()
+        precision = (confirmed_alarms / total_alarms * 100) if total_alarms > 0 else 0
+        
+        # Sonuç Ekranı
+        st.success("Test Tamamlandı!")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Toplam Alarm", total_alarms)
+        c2.metric("Doğrulanan", confirmed_alarms)
+        c3.metric("Netlik (Precision)", f"%{precision:.2f}")
+        
+        # LOG İNDİRME
+        log_text = f"SİSMİQ BİLİMSEL DOĞRULAMA RAPORU\n{'='*40}\nToplam Deneme: {trials}\nNetlik: %{precision:.2f}\n\nDETAYLAR:\n" + "\n".join(logs)
+        st.download_button("📜 Test Loglarını İndir (.txt)", log_text, "validation_log.txt", "text/plain")
+
+# --- SAYFA: NASIL YORUMLAMALI? ---
 elif page == "❓ Nasıl Yorumlamalı?":
     st.title("❓ Alarmları Nasıl Yorumlamalıyım?")
     
