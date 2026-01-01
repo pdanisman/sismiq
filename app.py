@@ -529,7 +529,7 @@ elif page == "🗺️ Tüm Türkiye Analizi":
             fig.savefig(img_buf, format='png', bbox_inches='tight', facecolor='#0E1117')
             st.download_button("🖼️ Haritayı İndir (.png)", img_buf.getvalue(), "Sismiq_Harita.png", "image/png")
         else:
-            st.info("Lütfen yukarıdaki 'ANALİZİ BAŞLAT' butonuna basınız.")
+            st.info("Lütfen İstediğiniz tarihi girerek aşağıdaki 'ANALİZİ BAŞLAT' butonuna basınız. Daha sonra yukarıdaki sekmelerden sonuçları harita veya rapor olarak inceleyebilirsiniz")
 
     with tab2:
         if 'report_data' in st.session_state and st.session_state['report_data']:
@@ -683,4 +683,5 @@ elif page == "❓ Nasıl Yorumlamalı?":
     * **Durum:** Şu an için anormal bir durum yok.
     * **Öneri:** Rutin deprem hazırlığı yeterli.
     """)
+
 
