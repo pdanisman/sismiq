@@ -23,7 +23,36 @@ st.set_page_config(
 warnings.filterwarnings("ignore")
 
 # -----------------------------------------------------------------------------
-# 2. SABİT DEĞİŞKENLER (GLOBAL)
+# 2. GÜVENLİK VE YASAL UYARI (MODAL / EXPANDER)
+# -----------------------------------------------------------------------------
+def show_disclaimer():
+    st.info("⚠️ **LÜTFEN OKUYUNUZ: YASAL UYARI VE KULLANIM KOŞULLARI**")
+    st.markdown("""
+    <div style="font-size: 14px; color: #ddd; margin-bottom: 20px;">
+    1. <strong>Bilimsel Amaçlıdır:</strong> SİSMİQ (Sismik İstihbarat ve Mantıksal İşlem Kuyruğu), geçmiş deprem verilerini işleyerek istatistiksel risk analizi yapan deneysel bir yazılımdır.<br>
+    2. <strong>Resmi Kaynak Değildir:</strong> Buradaki veriler <strong>KESİN DEPREM TAHMİNİ İÇERMEZ.</strong> Türkiye Cumhuriyeti'nde deprem konusunda tek resmi yetkili kurumlar <strong>AFAD</strong> ve <strong>Kandilli Rasathanesi</strong>'dir.<br>
+    3. <strong>Sorumluluk Reddi:</strong> Bu yazılımın ürettiği sonuçlara dayanarak alınan kişisel veya ticari kararlardan, yaşanabilecek panik veya maddi/manevi zararlardan geliştirici sorumlu tutulamaz. Yazılım "olduğu gibi" (as-is) sunulmuştur.<br>
+    4. <strong>Veri Kaynağı:</strong> Analizler halka açık sismik veri setleri kullanılarak yapılmaktadır.<br>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    agree = st.checkbox("Yukarıdaki yasal uyarıyı okudum, anladım ve kabul ediyorum.")
+    return agree
+
+# Kullanıcı onayı kontrolü
+if 'disclaimer_accepted' not in st.session_state:
+    st.session_state.disclaimer_accepted = False
+
+if not st.session_state.disclaimer_accepted:
+    is_agreed = show_disclaimer()
+    if is_agreed:
+        st.session_state.disclaimer_accepted = True
+        st.rerun()
+    else:
+        st.stop() # Kodun geri kalanını durdur
+
+# -----------------------------------------------------------------------------
+# 3. SABİT DEĞİŞKENLER (GLOBAL)
 # -----------------------------------------------------------------------------
 VERSION = "SİSMİQ v1.0 (Public Release)"
 DOSYA_ADI = 'deprem.txt'
@@ -63,7 +92,7 @@ METROPOLITAN_CITIES = {
 }
 
 # -----------------------------------------------------------------------------
-# 3. YARDIMCI FONKSİYONLAR
+# 4. YARDIMCI FONKSİYONLAR
 # -----------------------------------------------------------------------------
 @st.cache_data
 def load_data(filepath):
@@ -234,12 +263,27 @@ def calculate_risk_engine(df, lat, lon, simdi):
     return risk_score, reasons, fault_name
 
 # -----------------------------------------------------------------------------
-# 4. ARAYÜZ (UI)
+# 5. ARAYÜZ (UI)
 # -----------------------------------------------------------------------------
 
 st.sidebar.title("🌋 SİSMİQ ANALİZÖR")
 st.sidebar.info(f"Sürüm: {VERSION.split('(')[0]}")
-page = st.sidebar.radio("Mod Seçiniz:", ["🏠 Ana Sayfa & Başarılar", "📍 Tek Nokta Analizi", "🗺️ Tüm Türkiye Analizi", "🧪 Bilimsel Doğrulama", "❓ Nasıl Yorumlamalı?"])
+
+# MENÜ (İkonlar güncellendi)
+page = st.sidebar.radio(
+    "Menü:", 
+    ["🏠 Ana Sayfa & Başarılar", 
+     "📍 Tek Nokta Analizi", 
+     "🗺️ Tüm Türkiye Analizi", 
+     "🧪 Bilimsel Doğrulama", 
+     "❓ Nasıl Yorumlamalı?"]
+)
+
+# Geri Bildirim Butonu
+st.sidebar.markdown("---")
+st.sidebar.write("📫 **Geri Bildirim:**")
+st.sidebar.markdown("[Hata Bildir / Öneri Yap](mailto:sismiq.contact@gmail.com?subject=SİSMİQ%20Geri%20Bildirim)")
+st.sidebar.caption("Görüşleriniz sadece geliştirici ekibe ulaşır.")
 
 # Veri Yükleme
 df = load_data(DOSYA_ADI)
@@ -256,7 +300,7 @@ if page == "🏠 Ana Sayfa & Başarılar":
     # GÜNCEL VERİLER (NETLİK TESTİ SONUCU %35.26 İLE GÜNCELLENDİ)
     col1, col2, col3 = st.columns(3)
     col1.metric("Yakalama Oranı (Recall)", "%71.4", "Büyük Depremler")
-    col2.metric("Netlik Oranı (Precision)", "%35.3", "Geriye Dönük Tarama")
+    col2.metric("Netlik Oranı (Precision)", "%35.2", "Geriye Dönük Tarama")
     col3.metric("F1 Denge Skoru", "0.47", "İstikrarlı")
     
     st.info("ℹ️ Bu sonuçlar, 2000-2024 yılları arasındaki 150.000+ deprem verisi üzerinde yapılan 'Geriye Dönük Kör Testler' ve kapsamlı simülasyonlar ile doğrulanmıştır.")
@@ -348,7 +392,7 @@ ZAMAN TÜNELİ (GEÇMİŞ PUANLAR):
                 print_risk_legend_web()
 
 # --- SAYFA: TÜM TÜRKİYE ANALİZİ ---
-elif page == "🗺️ Tüm Türkiye Haritası":
+elif page == "🗺️ Tüm Türkiye Analizi":
     st.title("🗺️ Tüm Türkiye Sismik Analizi")
     
     st.markdown("""
@@ -465,15 +509,15 @@ elif page == "🗺️ Tüm Türkiye Haritası":
         else:
             st.info("Risk kriterlerine uyan bir bölge bulunamadı veya analiz henüz başlatılmadı.")
 
-# --- SAYFA: BİLİMSEL DOĞRULAMA (YENİ VE GELİŞMİŞ) ---
+# --- SAYFA: BİLİMSEL DOĞRULAMA ---
 elif page == "🧪 Bilimsel Doğrulama":
     st.title("🧪 Bilimsel Doğrulama Laboratuvarı")
     
     st.markdown("""
     <div style="background-color: #262730; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
     <strong>🔬 Bu Sayfa Ne Yapar?</strong><br>
-    SİSMİQ algoritmasının güvenilirliğini test eder.<br>
-    - <strong>Faz 1 (Recall):</strong> Geçmişteki büyük depremleri önceden yakalama başarısı.<br>
+    SİSMİQ algoritmasını geçmiş veriler üzerinde test eder.<br>
+    - <strong>Faz 1 (Recall):</strong> Geçmişteki büyük depremleri ne kadar önceden yakalayabildiğini ölçer.<br>
     - <strong>Faz 2 (Netlik):</strong> Rastgele 3 geçmiş tarihte tüm Türkiye'yi tarayıp, o tarihlerdeki alarmların 2 yıl içinde gerçekleşip gerçekleşmediğini ölçer.
     </div>
     """, unsafe_allow_html=True)
