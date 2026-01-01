@@ -5,6 +5,7 @@ import datetime
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.image as mpimg
+import altair as alt  # Grafik kütüphanesi eklendi
 import os
 import random
 import warnings
@@ -23,7 +24,7 @@ st.set_page_config(
 warnings.filterwarnings("ignore")
 
 # -----------------------------------------------------------------------------
-# 2. GÜVENLİK VE YASAL UYARI (MODAL / EXPANDER)
+# 2. GÜVENLİK VE YASAL UYARI
 # -----------------------------------------------------------------------------
 def show_disclaimer():
     st.info("⚠️ **LÜTFEN OKUYUNUZ: YASAL UYARI VE KULLANIM KOŞULLARI**")
@@ -39,7 +40,6 @@ def show_disclaimer():
     agree = st.checkbox("Yukarıdaki yasal uyarıyı okudum, anladım ve kabul ediyorum.")
     return agree
 
-# Kullanıcı onayı kontrolü
 if 'disclaimer_accepted' not in st.session_state:
     st.session_state.disclaimer_accepted = False
 
@@ -49,7 +49,7 @@ if not st.session_state.disclaimer_accepted:
         st.session_state.disclaimer_accepted = True
         st.rerun()
     else:
-        st.stop() # Kodun geri kalanını durdur
+        st.stop()
 
 # -----------------------------------------------------------------------------
 # 3. SABİT DEĞİŞKENLER (GLOBAL)
@@ -79,7 +79,6 @@ ACTIVE_FAULTS = {
     "Malatya-Ovacık": ((39.5, 39.0), (38.3, 38.0))
 }
 
-# Büyükşehir Koordinatları
 METROPOLITAN_CITIES = {
     "İstanbul": (41.00, 28.97), "Ankara": (39.93, 32.85), "İzmir": (38.42, 27.14),
     "Antalya": (36.89, 30.71), "Bursa": (40.18, 29.06), "Adana": (37.00, 35.32),
@@ -92,7 +91,7 @@ METROPOLITAN_CITIES = {
 }
 
 # -----------------------------------------------------------------------------
-# 4. YARDIMCI FONKSİYONLAR
+# 3. YARDIMCI FONKSİYONLAR
 # -----------------------------------------------------------------------------
 @st.cache_data
 def load_data(filepath):
@@ -167,12 +166,6 @@ def calculate_b_value(magnitudes):
     if mean_mag == BUYUKLUK_FILTRESI: return 1.0
     return 0.4343 / (mean_mag - BUYUKLUK_FILTRESI)
 
-def get_visual_icon(score):
-    if score == 9999: return ICON_POST
-    if score >= 75: return ICON_HIGH
-    if score >= 50: return ICON_MED
-    return ICON_LOW
-
 def get_risk_label_and_color(score):
     if score >= 326: return "KRİTİK RİSK", "#FF0000"
     if score >= 226: return "YÜKSEK RİSK", "#FFA500"
@@ -185,6 +178,13 @@ def get_risk_label_text(score):
     if score >= 126: return "ORTA RİSK"
     return "DÜŞÜK RİSK"
 
+# Grafik için tekil durum belirleyici
+def get_snapshot_status(score):
+    if score == 9999: return "POST-SİSMİK", "#808080", 20 # Gri
+    if score >= 75: return "YÜKSEK STRES", "#FF0000", score # Kırmızı
+    if score >= 50: return "HAREKETLİ", "#FFA500", score # Turuncu
+    return "NORMAL", "#00FF00", 20 # Yeşil (Görünmesi için min yükseklik 20)
+
 def print_risk_legend_web():
     st.markdown("---")
     st.info("""
@@ -196,7 +196,7 @@ def print_risk_legend_web():
     * **X POST-SİSMİK:** Enerji Boşalmış. Artçılar olabilir ama ana şok riski düşük.
     """)
 
-# --- RİSK MOTORU (CORE) ---
+# --- RİSK MOTORU ---
 def calculate_risk_engine(df, lat, lon, simdi):
     is_on_fault, fault_name = check_fault_proximity(lat, lon)
     
@@ -269,7 +269,6 @@ def calculate_risk_engine(df, lat, lon, simdi):
 st.sidebar.title("🌋 SİSMİQ ANALİZÖR")
 st.sidebar.info(f"Sürüm: {VERSION.split('(')[0]}")
 
-# MENÜ (İkonlar güncellendi)
 page = st.sidebar.radio(
     "Menü:", 
     ["🏠 Ana Sayfa & Başarılar", 
@@ -279,13 +278,11 @@ page = st.sidebar.radio(
      "❓ Nasıl Yorumlamalı?"]
 )
 
-# Geri Bildirim Butonu
 st.sidebar.markdown("---")
 st.sidebar.write("📫 **Geri Bildirim:**")
-st.sidebar.markdown("[Hata Bildir / Öneri Yap](mailto:sismiq.contact@gmail.com?subject=SİSMİQ%20Geri%20Bildirim)")
+st.sidebar.markdown("[Hata Bildir / Öneri Yap](mailto:pcqlock@msn.com?subject=SİSMİQ%20Geri%20Bildirim)")
 st.sidebar.caption("Görüşleriniz sadece geliştirici ekibe ulaşır.")
 
-# Veri Yükleme
 df = load_data(DOSYA_ADI)
 if df.empty:
     st.error(f"'{DOSYA_ADI}' dosyası bulunamadı! Lütfen dosyayı proje klasörüne ekleyin.")
@@ -297,10 +294,9 @@ if page == "🏠 Ana Sayfa & Başarılar":
     st.markdown("### Veriye Dayalı Deprem Riski Öngörü Algoritması")
     st.markdown("---")
     
-    # GÜNCEL VERİLER (NETLİK TESTİ SONUCU %35.26 İLE GÜNCELLENDİ)
     col1, col2, col3 = st.columns(3)
     col1.metric("Yakalama Oranı (Recall)", "%71.4", "Büyük Depremler")
-    col2.metric("Netlik Oranı (Precision)", "%35.2", "Geriye Dönük Tarama")
+    col2.metric("Netlik Oranı (Precision)", "%35.3", "Geriye Dönük Tarama")
     col3.metric("F1 Denge Skoru", "0.47", "İstikrarlı")
     
     st.info("ℹ️ Bu sonuçlar, 2000-2024 yılları arasındaki 150.000+ deprem verisi üzerinde yapılan 'Geriye Dönük Kör Testler' ve kapsamlı simülasyonlar ile doğrulanmıştır.")
@@ -336,16 +332,22 @@ elif page == "📍 Tek Nokta Analizi":
             
             curr, reas, f = calculate_risk_engine(df, lat_input, lon_input, analyze_date)
             
-            past_scores = []
-            labels = ["Şimdi", "1 Ay", "3 Ay", "6 Ay", "1 Yıl"]
-            intervals = [0, 30, 90, 180, 365]
+            past_scores_raw = []
+            intervals = [365, 180, 90, 30, 0] # 1 Yıl'dan Şimdi'ye doğru sıralama
+            labels_chrono = ["1 Yıl Önce", "6 Ay Önce", "3 Ay Önce", "1 Ay Önce", "Şimdi"]
             
+            # Zaman çizelgesi verilerini topla (Kronolojik)
             for d in intervals:
-                p_s, _, _ = calculate_risk_engine(df, lat_input, lon_input, analyze_date - datetime.timedelta(days=d))
-                val = 0 if p_s == 9999 else p_s
-                past_scores.append(val)
+                if d == 0:
+                    p_s = curr
+                else:
+                    p_s, _, _ = calculate_risk_engine(df, lat_input, lon_input, analyze_date - datetime.timedelta(days=d))
+                past_scores_raw.append(p_s)
             
-            s_vals = [s if s >= 50 else 0 for s in past_scores]
+            # Risk Puanı (Aggregated Score) için verileri hazırla (Ağırlıklı hesaplama için ters sıra lazım)
+            # Hesaplamada sıra: [Şimdi, 1 Ay, 3 Ay, 6 Ay, 1 Yıl]
+            calc_scores = past_scores_raw[::-1] 
+            s_vals = [s if s >= 50 else 0 for s in calc_scores]
             heat_val = int((s_vals[0]*1.5) + (s_vals[1]*0.8) + (s_vals[2]*0.6) + (s_vals[3]*0.4) + (s_vals[4]*0.2))
             
             risk_text, risk_color = get_risk_label_and_color(heat_val)
@@ -365,14 +367,6 @@ Risk Seviyesi: {risk_text}
 TESPİT EDİLEN ANOMALİLER:
 ------------------------
 {', '.join(reas) if reas else 'Önemli bir anomali yok.'}
-
-ZAMAN TÜNELİ (GEÇMİŞ PUANLAR):
------------------------------
-Şimdi: {past_scores[0]}
-1 Ay Önce: {past_scores[1]}
-3 Ay Önce: {past_scores[2]}
-6 Ay Önce: {past_scores[3]}
-1 Yıl Önce: {past_scores[4]}
             """
             
             if curr == 9999:
@@ -385,14 +379,56 @@ ZAMAN TÜNELİ (GEÇMİŞ PUANLAR):
                 st.write(f"**Bölge/Fay:** {f}")
                 st.write(f"**Nedenler:** {', '.join(reas) if reas else 'Temiz'}")
                 st.write("---")
+                
                 st.download_button(label="📥 Raporu İndir (.txt)", data=report_txt, file_name=f"Sismiq_Rapor.txt", mime="text/plain")
-                st.subheader("📈 Zaman Tüneli")
-                chart_data = pd.DataFrame({"Zaman": labels, "Stres Puanı": past_scores})
-                st.line_chart(chart_data.set_index("Zaman"))
-                print_risk_legend_web()
+                
+                # --- GRAFİK BÖLÜMÜ (YENİ VE İYİLEŞTİRİLMİŞ) ---
+                st.subheader("📈 Zaman Tüneli (Stres Geçmişi)")
+                
+                # Grafik için veri hazırlığı
+                chart_data = []
+                for label, score in zip(labels_chrono, past_scores_raw):
+                    status_text, color_hex, plot_val = get_snapshot_status(score)
+                    chart_data.append({
+                        "Dönem": label,
+                        "Değer": plot_val, # Görsel yükseklik (sayı gizli)
+                        "Renk": color_hex,
+                        "Durum": status_text
+                    })
+                
+                df_chart = pd.DataFrame(chart_data)
+                
+                # Altair Bar Chart
+                c = alt.Chart(df_chart).mark_bar().encode(
+                    x=alt.X('Dönem', sort=None, title="Zaman Dilimi"), # sort=None ile liste sırasını korur
+                    y=alt.Y('Değer', title="Stres Yoğunluğu", axis=None), # Axis yok, sayı görünmez
+                    color=alt.Color('Renk', scale=None), # Hex kodlarını doğrudan kullan
+                    tooltip=['Dönem', 'Durum'] # Mouse üzerine gelince sadece bunlar görünür
+                ).properties(height=300)
+                
+                # Barların üzerine metin ekle
+                text = c.mark_text(
+                    align='center',
+                    baseline='bottom',
+                    dy=-5,
+                    color='white'
+                ).encode(
+                    text='Durum'
+                )
+                
+                st.altair_chart(c + text, use_container_width=True)
+                
+                with st.expander("ℹ️ Grafiği Nasıl Okumalıyım?"):
+                    st.markdown("""
+                    * **Yeşil (NORMAL):** Sismik aktivite olağan seviyede.
+                    * **Turuncu (HAREKETLİ):** Bölgede stres transferi veya fiziksel gerilme var.
+                    * **Kırmızı (YÜKSEK STRES):** Ani kilitlenme veya yoğun stres (Deprem öncesi olası sinyal).
+                    * **Gri (POST-SİSMİK):** Deprem sonrası enerji boşalımı.
+                    * *Not: Barların yüksekliği stresin şiddetini temsil eder.*
+                    """)
 
 # --- SAYFA: TÜM TÜRKİYE ANALİZİ ---
-elif page == "🗺️ Tüm Türkiye Analizi":
+elif page == "🗺️ Tüm Türkiye Haritası":
     st.title("🗺️ Tüm Türkiye Sismik Analizi")
     
     st.markdown("""
@@ -517,7 +553,7 @@ elif page == "🧪 Bilimsel Doğrulama":
     <div style="background-color: #262730; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
     <strong>🔬 Bu Sayfa Ne Yapar?</strong><br>
     SİSMİQ algoritmasını geçmiş veriler üzerinde test eder.<br>
-    - <strong>Faz 1 (Recall):</strong> Geçmişteki büyük depremleri ne kadar önceden yakalayabildiğini ölçer.<br>
+    - <strong>Faz 1 (Recall):</strong> Geçmişteki büyük depremleri önceden yakalama başarısı.<br>
     - <strong>Faz 2 (Netlik):</strong> Rastgele 3 geçmiş tarihte tüm Türkiye'yi tarayıp, o tarihlerdeki alarmların 2 yıl içinde gerçekleşip gerçekleşmediğini ölçer.
     </div>
     """, unsafe_allow_html=True)
@@ -607,7 +643,6 @@ elif page == "🧪 Bilimsel Doğrulama":
             st.success(f"Test Bitti! Netlik (Precision): %{precision:.2f}")
             st.download_button("📜 Netlik Loglarını İndir", log_text, "precision_log.txt", "text/plain")
             
-            # --- DİNAMİK LİTERATÜR TABLOSU ---
             st.markdown("---")
             st.subheader("🌍 Dünya Literatürü ile Karşılaştırma")
             st.info("Aşağıdaki tablo, SİSMİQ algoritmasının dünya genelindeki kabul görmüş modellerle karşılaştırmasını gösterir. Sismolojide **%10** üzeri Netlik (Precision) oranı 'Başarılı' kabul edilir.")
