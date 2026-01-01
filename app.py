@@ -5,14 +5,14 @@ import datetime
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.image as mpimg
-import altair as alt  # Grafik kütüphanesi eklendi
+import altair as alt
 import os
 import random
 import warnings
 import io
 
 # -----------------------------------------------------------------------------
-# 1. SAYFA VE SİSTEM AYARLARI
+# 1. SAYFA VE SİSTEM AYARLARI (EN BAŞTA OLMAK ZORUNDA)
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="SİSMİQ - Sismik Risk Analiz Sistemi",
@@ -91,7 +91,7 @@ METROPOLITAN_CITIES = {
 }
 
 # -----------------------------------------------------------------------------
-# 3. YARDIMCI FONKSİYONLAR
+# 4. YARDIMCI FONKSİYONLAR
 # -----------------------------------------------------------------------------
 @st.cache_data
 def load_data(filepath):
@@ -166,6 +166,12 @@ def calculate_b_value(magnitudes):
     if mean_mag == BUYUKLUK_FILTRESI: return 1.0
     return 0.4343 / (mean_mag - BUYUKLUK_FILTRESI)
 
+def get_visual_icon(score):
+    if score == 9999: return ICON_POST
+    if score >= 75: return ICON_HIGH
+    if score >= 50: return ICON_MED
+    return ICON_LOW
+
 def get_risk_label_and_color(score):
     if score >= 326: return "KRİTİK RİSK", "#FF0000"
     if score >= 226: return "YÜKSEK RİSK", "#FFA500"
@@ -178,12 +184,11 @@ def get_risk_label_text(score):
     if score >= 126: return "ORTA RİSK"
     return "DÜŞÜK RİSK"
 
-# Grafik için tekil durum belirleyici
 def get_snapshot_status(score):
-    if score == 9999: return "POST-SİSMİK", "#808080", 20 # Gri
-    if score >= 75: return "YÜKSEK STRES", "#FF0000", score # Kırmızı
-    if score >= 50: return "HAREKETLİ", "#FFA500", score # Turuncu
-    return "NORMAL", "#00FF00", 20 # Yeşil (Görünmesi için min yükseklik 20)
+    if score == 9999: return "POST-SİSMİK", "#808080", 20 
+    if score >= 75: return "YÜKSEK STRES", "#FF0000", score 
+    if score >= 50: return "HAREKETLİ", "#FFA500", score 
+    return "NORMAL", "#00FF00", 20 
 
 def print_risk_legend_web():
     st.markdown("---")
@@ -196,7 +201,7 @@ def print_risk_legend_web():
     * **X POST-SİSMİK:** Enerji Boşalmış. Artçılar olabilir ama ana şok riski düşük.
     """)
 
-# --- RİSK MOTORU ---
+# --- RİSK MOTORU (CORE) ---
 def calculate_risk_engine(df, lat, lon, simdi):
     is_on_fault, fault_name = check_fault_proximity(lat, lon)
     
@@ -280,7 +285,7 @@ page = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 st.sidebar.write("📫 **Geri Bildirim:**")
-st.sidebar.markdown("[Hata Bildir / Öneri Yap](mailto:pcqlock@msn.com?subject=SİSMİQ%20Geri%20Bildirim)")
+st.sidebar.markdown("[Hata Bildir / Öneri Yap](mailto:sismiq.contact@gmail.com?subject=SİSMİQ%20Geri%20Bildirim)")
 st.sidebar.caption("Görüşleriniz sadece geliştirici ekibe ulaşır.")
 
 df = load_data(DOSYA_ADI)
@@ -385,7 +390,6 @@ TESPİT EDİLEN ANOMALİLER:
                 # --- GRAFİK BÖLÜMÜ (YENİ VE İYİLEŞTİRİLMİŞ) ---
                 st.subheader("📈 Zaman Tüneli (Stres Geçmişi)")
                 
-                # Grafik için veri hazırlığı
                 chart_data = []
                 for label, score in zip(labels_chrono, past_scores_raw):
                     status_text, color_hex, plot_val = get_snapshot_status(score)
@@ -398,23 +402,14 @@ TESPİT EDİLEN ANOMALİLER:
                 
                 df_chart = pd.DataFrame(chart_data)
                 
-                # Altair Bar Chart
                 c = alt.Chart(df_chart).mark_bar().encode(
-                    x=alt.X('Dönem', sort=None, title="Zaman Dilimi"), # sort=None ile liste sırasını korur
-                    y=alt.Y('Değer', title="Stres Yoğunluğu", axis=None), # Axis yok, sayı görünmez
-                    color=alt.Color('Renk', scale=None), # Hex kodlarını doğrudan kullan
-                    tooltip=['Dönem', 'Durum'] # Mouse üzerine gelince sadece bunlar görünür
+                    x=alt.X('Dönem', sort=None, title="Zaman Dilimi"), 
+                    y=alt.Y('Değer', title="Stres Yoğunluğu", axis=None), 
+                    color=alt.Color('Renk', scale=None), 
+                    tooltip=['Dönem', 'Durum'] 
                 ).properties(height=300)
                 
-                # Barların üzerine metin ekle
-                text = c.mark_text(
-                    align='center',
-                    baseline='bottom',
-                    dy=-5,
-                    color='white'
-                ).encode(
-                    text='Durum'
-                )
+                text = c.mark_text(align='center', baseline='bottom', dy=-5, color='white').encode(text='Durum')
                 
                 st.altair_chart(c + text, use_container_width=True)
                 
@@ -426,9 +421,10 @@ TESPİT EDİLEN ANOMALİLER:
                     * **Gri (POST-SİSMİK):** Deprem sonrası enerji boşalımı.
                     * *Not: Barların yüksekliği stresin şiddetini temsil eder.*
                     """)
+                print_risk_legend_web()
 
 # --- SAYFA: TÜM TÜRKİYE ANALİZİ ---
-elif page == "🗺️ Tüm Türkiye Haritası":
+elif page == "🗺️ Tüm Türkiye Analizi":
     st.title("🗺️ Tüm Türkiye Sismik Analizi")
     
     st.markdown("""
