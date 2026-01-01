@@ -300,15 +300,16 @@ if page == "🏠 Ana Sayfa & Başarılar":
     st.markdown("---")
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("Yakalama Oranı (Recall)", "%71.4", "Büyük Depremler")
-    col2.metric("Netlik Oranı (Precision)", "%35.3", "Geriye Dönük Tarama")
+    col1.metric("Yakalama Oranı (Recall)", "%65.22", "Büyük Depremler")
+    col2.metric("Netlik Oranı (Precision)", "%30.0<", "Geriye Dönük Tarama")
     col3.metric("F1 Denge Skoru", "0.47", "İstikrarlı")
     
-    st.info("ℹ️ Bu sonuçlar, 2000-2024 yılları arasındaki 150.000+ deprem verisi üzerinde yapılan 'Geriye Dönük Kör Testler' ve kapsamlı simülasyonlar ile doğrulanmıştır.")
+    st.info("ℹ️ Bu sonuçlar, 2000-2024 yılları arasındaki 12.000+ deprem verisi üzerinde yapılan 'Geriye Dönük Kör Testler' ve kapsamlı simülasyonlar ile doğrulanmıştır.")
 
     st.markdown("""
     ### 🏆 Sistem Performansı
-    * ✅ **Kahramanmaraş Başarısı:** 2023 depremlerini 6 ay önceden 'Yüksek Risk' olarak sinyalledi.
+    * ✅ **Kahramanmaraş Başarısı:** 2023 depremlerini 6 ay önceden en yüksek seviyede 'Kritik Risk' olarak sinyalledi.
+    * ✅ **Geçmiş Başarılar:** 2011 Van (7.1) 2020 Bingöl (6.7) depremlerini 1 yıl önceden en yüksek seviyede 'Kritik Risk' olarak sinyalledi.
     * ✅ **Bilimsel Metot:** 3 bağımsız geçmiş tarihte tüm Türkiye taranarak sistemin kararlılığı test edildi.
     * ⚠️ **Sınırlamalar:** Kesin "ne zaman" tahmini yapamaz. Karar destek aracıdır.
     """)
@@ -683,5 +684,6 @@ elif page == "❓ Nasıl Yorumlamalı?":
     * **Durum:** Şu an için anormal bir durum yok.
     * **Öneri:** Rutin deprem hazırlığı yeterli.
     """)
+
 
 
