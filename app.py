@@ -194,8 +194,8 @@ def print_risk_legend_web():
     st.markdown("---")
     st.info("""
     **RİSK SINIFLANDIRMA REHBERİ:**
-    * 🔴 **KRİTİK RİSK (326+ Puan):** Acil Durum. Fay kilitlenmiş. Yakın zamanda (Gün/Hafta) deprem ihtimali yüksek.
-    * 🟠 **YÜKSEK RİSK (226-325 Puan):** Dikkat! Belirgin stres var. Orta vadede (Ay/1 Yıl) riskli.
+    * 🔴 **KRİTİK RİSK (326+ Puan):** Acil Durum. Fay kilitlenmiş. 5.5mag üstü Deprem ihtimali yüksek.
+    * 🟠 **YÜKSEK RİSK (226-325 Puan):** Dikkat! Belirgin stres var. Orta vadede (2 Yıl) riskli.
     * 🟡 **ORTA RİSK (126-225 Puan):** Uyarı. Bölge stres biriktiriyor. Takip edilmeli.
     * 🟢 **DÜŞÜK RİSK (0-125 Puan):** Olağan Durum.
     * **X POST-SİSMİK:** Enerji Boşalmış. Artçılar olabilir ama ana şok riski düşük.
@@ -683,3 +683,4 @@ elif page == "❓ Nasıl Yorumlamalı?":
     * **Durum:** Şu an için anormal bir durum yok.
     * **Öneri:** Rutin deprem hazırlığı yeterli.
     """)
+
