@@ -300,8 +300,8 @@ if page == "🏠 Ana Sayfa & Başarılar":
     st.markdown("---")
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("Yakalama Oranı (Recall)", "%65.22", "Büyük Depremler")
-    col2.metric("Netlik Oranı (Precision)", "%30.0<", "Geriye Dönük Tarama")
+    col1.metric("Yakalama Oranı (Recall)", "%65.22", "5.5mag Üzeri Büyük Depremler")
+    col2.metric("Netlik Oranı (Precision)", "%25.0<", "Geriye Dönük Tarama")
     col3.metric("F1 Denge Skoru", "0.47", "İstikrarlı")
     
     st.info("ℹ️ Bu sonuçlar, 2000-2024 yılları arasındaki 12.000+ deprem verisi üzerinde yapılan 'Geriye Dönük Kör Testler' ve kapsamlı simülasyonlar ile doğrulanmıştır.")
@@ -684,6 +684,7 @@ elif page == "❓ Nasıl Yorumlamalı?":
     * **Durum:** Şu an için anormal bir durum yok.
     * **Öneri:** Rutin deprem hazırlığı yeterli.
     """)
+
 
 
 
