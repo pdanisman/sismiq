@@ -54,7 +54,7 @@ if not st.session_state.disclaimer_accepted:
 # -----------------------------------------------------------------------------
 # 3. SABİT DEĞİŞKENLER (GLOBAL)
 # -----------------------------------------------------------------------------
-VERSION = "SİSMİQ v1.1 (Extended History)"
+VERSION = "SİSMİQ v1.2 (Final Release)"
 DOSYA_ADI = 'deprem.txt'
 HARITA_DOSYASI = 'harita.png'
 
@@ -79,6 +79,7 @@ ACTIVE_FAULTS = {
     "Malatya-Ovacık": ((39.5, 39.0), (38.3, 38.0))
 }
 
+# Şehir Koordinatları (Harita Üzerine İşlenecek)
 METROPOLITAN_CITIES = {
     "İstanbul": (41.00, 28.97), "Ankara": (39.93, 32.85), "İzmir": (38.42, 27.14),
     "Antalya": (36.89, 30.71), "Bursa": (40.18, 29.06), "Adana": (37.00, 35.32),
@@ -342,7 +343,6 @@ elif page == "📍 Tek Nokta Analizi":
             intervals = [365, 180, 90, 30, 0] # 1 Yıl'dan Şimdi'ye doğru sıralama
             labels_chrono = ["1 Yıl Önce", "6 Ay Önce", "3 Ay Önce", "1 Ay Önce", "Şimdi"]
             
-            # Zaman çizelgesi verilerini topla (Kronolojik)
             for d in intervals:
                 if d == 0:
                     p_s = curr
@@ -350,8 +350,6 @@ elif page == "📍 Tek Nokta Analizi":
                     p_s, _, _ = calculate_risk_engine(df, lat_input, lon_input, analyze_date - datetime.timedelta(days=d))
                 past_scores_raw.append(p_s)
             
-            # Risk Puanı (Aggregated Score) için verileri hazırla (Ağırlıklı hesaplama için ters sıra lazım)
-            # Hesaplamada sıra: [Şimdi, 1 Ay, 3 Ay, 6 Ay, 1 Yıl]
             calc_scores = past_scores_raw[::-1] 
             s_vals = [s if s >= 50 else 0 for s in calc_scores]
             heat_val = int((s_vals[0]*1.5) + (s_vals[1]*0.8) + (s_vals[2]*0.6) + (s_vals[3]*0.4) + (s_vals[4]*0.2))
@@ -388,7 +386,6 @@ TESPİT EDİLEN ANOMALİLER:
                 
                 st.download_button(label="📥 Raporu İndir (.txt)", data=report_txt, file_name=f"Sismiq_Rapor.txt", mime="text/plain")
                 
-                # --- GRAFİK BÖLÜMÜ ---
                 st.subheader("📈 Zaman Tüneli (Stres Geçmişi)")
                 
                 chart_data = []
@@ -424,27 +421,20 @@ TESPİT EDİLEN ANOMALİLER:
                     """)
                 print_risk_legend_web()
 
-                # --- YENİ EKLENEN KISIM: BÖLGESEL DEPREM GEÇMİŞİ ---
+                # --- BÖLGESEL DEPREM GEÇMİŞİ (EKLENEN KISIM) ---
                 st.write("---")
                 st.subheader("📜 Bölgesel Deprem Geçmişi (150 KM)")
                 
-                # Mesafeleri hesapla
                 dists = haversine_vectorized(lat_input, lon_input, df['Enlem'].values, df['Boylam'].values)
-                
-                # Gösterim için kopya dataframe
                 display_df = df.copy()
                 display_df['Mesafe (km)'] = dists
                 
-                # Filtrele: 150km içinde ve analiz tarihinden eskiler
                 nearby_quakes = display_df[
                     (display_df['Mesafe (km)'] <= ANALIZ_YARICAP_KM) & 
                     (display_df['Tarih'] <= analyze_date)
                 ]
                 
-                # Tarihe göre yeniden eskiye sırala
                 nearby_quakes = nearby_quakes.sort_values(by='Tarih', ascending=False)
-                
-                # Okunabilir tarih formatı ve sütun seçimi
                 nearby_quakes['Tarih'] = nearby_quakes['Tarih'].dt.strftime('%Y-%m-%d %H:%M')
                 nearby_quakes = nearby_quakes[['Tarih', 'Enlem', 'Boylam', 'Mag', 'Mesafe (km)']]
                 
@@ -538,6 +528,7 @@ elif page == "🗺️ Tüm Türkiye Analizi":
                 py = [p[0] for p in st.session_state['post_risks']]
                 ax.scatter(px, py, c='cyan', s=15, marker='x', label="Post-Sismik", edgecolors='white', zorder=2)
 
+            # ŞEHİRLERİ HARİTAYA BASAN DÖNGÜ (BURASI GERİ GELDİ)
             for city, (clat, clon) in METROPOLITAN_CITIES.items():
                 if 36 <= clat <= 42.1 and 26 <= clon <= 45.1:
                     ax.scatter(clon, clat, c='white', s=10, edgecolors='black', zorder=5)
