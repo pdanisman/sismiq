@@ -816,18 +816,19 @@ def render_analysis_results(lat, lon, date, location_name="Seçilen Konum"):
             """)
         print_risk_legend_web()
 
-    # GEÇMİŞ LİSTESİ (HER İKİ DURUMDA DA ÇALIŞIR)
+
+# GEÇMİŞ LİSTESİ (HER İKİ DURUMDA DA ÇALIŞIR)
     st.write("---")
-    st.subheader(f"📜 {location_name} Çevresindeki Deprem Geçmişi (150 KM)")
+    st.subheader(f"📜 {location_name} Çevresindeki Deprem Geçmişi (100 KM)") 
     dists = haversine_vectorized(lat, lon, df['Enlem'].values, df['Boylam'].values)
     display_df = df.copy()
     display_df['Mesafe (km)'] = dists
-    nearby_quakes = display_df[(display_df['Mesafe (km)'] <= ANALIZ_YARICAP_KM) & (display_df['Tarih'] <= date)].sort_values(by='Tarih', ascending=False)
+    nearby_quakes = display_df[(display_df['Mesafe (km)'] <= 100) & (display_df['Tarih'] <= date)].sort_values(by='Tarih', ascending=False)
     nearby_quakes['Tarih'] = nearby_quakes['Tarih'].dt.strftime('%Y-%m-%d %H:%M')
     
     with st.expander(f"📋 Toplam {len(nearby_quakes)} Kayıt Bulundu (Listeyi Aç)"):
         st.dataframe(nearby_quakes[['Tarih', 'Enlem', 'Boylam', 'Mag', 'Mesafe (km)']], use_container_width=True)
-
+        
 # -----------------------------------------------------------------------------
 # 5. ARAYÜZ (UI)
 # -----------------------------------------------------------------------------
@@ -1015,4 +1016,5 @@ elif page == "❓ Nasıl Yorumlamalı?":
     st.title("❓ Yardım ve Rehber")
     st.error("🔴 KRİTİK RİSK (326+): Çok Yüksek İhtimal."); st.warning("🟠 YÜKSEK RİSK (226-325): Belirgin Stres.")
     st.markdown("🟡 ORTA RİSK (126-225): Takip Edilmeli."); st.success("🟢 DÜŞÜK RİSK (0-125): Olağan.")
+
 
