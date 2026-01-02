@@ -12,7 +12,7 @@ import warnings
 import io
 
 # -----------------------------------------------------------------------------
-# 1. SAYFA VE SİSTEM AYARLARI (EN BAŞTA OLMAK ZORUNDA)
+# 1. SAYFA VE SİSTEM AYARLARI
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="SİSMİQ - Sismik Risk Analiz Sistemi",
@@ -54,7 +54,7 @@ if not st.session_state.disclaimer_accepted:
 # -----------------------------------------------------------------------------
 # 3. SABİT DEĞİŞKENLER (GLOBAL)
 # -----------------------------------------------------------------------------
-VERSION = "SİSMİQ v1.0 (Public Release)"
+VERSION = "SİSMİQ v1.1 (Extended History)"
 DOSYA_ADI = 'deprem.txt'
 HARITA_DOSYASI = 'harita.png'
 
@@ -91,7 +91,7 @@ METROPOLITAN_CITIES = {
 }
 
 # -----------------------------------------------------------------------------
-# 4. YARDIMCI FONKSİYONLAR
+# 3. YARDIMCI FONKSİYONLAR
 # -----------------------------------------------------------------------------
 @st.cache_data
 def load_data(filepath):
@@ -388,7 +388,7 @@ TESPİT EDİLEN ANOMALİLER:
                 
                 st.download_button(label="📥 Raporu İndir (.txt)", data=report_txt, file_name=f"Sismiq_Rapor.txt", mime="text/plain")
                 
-                # --- GRAFİK BÖLÜMÜ (YENİ VE İYİLEŞTİRİLMİŞ) ---
+                # --- GRAFİK BÖLÜMÜ ---
                 st.subheader("📈 Zaman Tüneli (Stres Geçmişi)")
                 
                 chart_data = []
@@ -396,7 +396,7 @@ TESPİT EDİLEN ANOMALİLER:
                     status_text, color_hex, plot_val = get_snapshot_status(score)
                     chart_data.append({
                         "Dönem": label,
-                        "Değer": plot_val, # Görsel yükseklik (sayı gizli)
+                        "Değer": plot_val, 
                         "Renk": color_hex,
                         "Durum": status_text
                     })
@@ -423,6 +423,33 @@ TESPİT EDİLEN ANOMALİLER:
                     * *Not: Barların yüksekliği stresin şiddetini temsil eder.*
                     """)
                 print_risk_legend_web()
+
+                # --- YENİ EKLENEN KISIM: BÖLGESEL DEPREM GEÇMİŞİ ---
+                st.write("---")
+                st.subheader("📜 Bölgesel Deprem Geçmişi (150 KM)")
+                
+                # Mesafeleri hesapla
+                dists = haversine_vectorized(lat_input, lon_input, df['Enlem'].values, df['Boylam'].values)
+                
+                # Gösterim için kopya dataframe
+                display_df = df.copy()
+                display_df['Mesafe (km)'] = dists
+                
+                # Filtrele: 150km içinde ve analiz tarihinden eskiler
+                nearby_quakes = display_df[
+                    (display_df['Mesafe (km)'] <= ANALIZ_YARICAP_KM) & 
+                    (display_df['Tarih'] <= analyze_date)
+                ]
+                
+                # Tarihe göre yeniden eskiye sırala
+                nearby_quakes = nearby_quakes.sort_values(by='Tarih', ascending=False)
+                
+                # Okunabilir tarih formatı ve sütun seçimi
+                nearby_quakes['Tarih'] = nearby_quakes['Tarih'].dt.strftime('%Y-%m-%d %H:%M')
+                nearby_quakes = nearby_quakes[['Tarih', 'Enlem', 'Boylam', 'Mag', 'Mesafe (km)']]
+                
+                with st.expander(f"📋 Toplam {len(nearby_quakes)} Kayıt Bulundu (Listeyi Açmak İçin Tıkla)"):
+                    st.dataframe(nearby_quakes, use_container_width=True)
 
 # --- SAYFA: TÜM TÜRKİYE ANALİZİ ---
 elif page == "🗺️ Tüm Türkiye Analizi":
@@ -530,7 +557,7 @@ elif page == "🗺️ Tüm Türkiye Analizi":
             fig.savefig(img_buf, format='png', bbox_inches='tight', facecolor='#0E1117')
             st.download_button("🖼️ Haritayı İndir (.png)", img_buf.getvalue(), "Sismiq_Harita.png", "image/png")
         else:
-            st.info("Lütfen İstediğiniz tarihi girerek aşağıdaki 'ANALİZİ BAŞLAT' butonuna basınız. Daha sonra yukarıdaki sekmelerden sonuçları harita veya rapor olarak inceleyebilirsiniz")
+            st.info("Lütfen yukarıdaki 'ANALİZİ BAŞLAT' butonuna basınız.")
 
     with tab2:
         if 'report_data' in st.session_state and st.session_state['report_data']:
@@ -684,7 +711,3 @@ elif page == "❓ Nasıl Yorumlamalı?":
     * **Durum:** Şu an için anormal bir durum yok.
     * **Öneri:** Rutin deprem hazırlığı yeterli.
     """)
-
-
-
-
