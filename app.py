@@ -860,7 +860,7 @@ elif page == "📍 Tek Nokta Analizi":
     st.markdown("İster koordinat girerek, ister listeden il ve ilçe seçerek analiz yapın.")
     
     # İKİ SEKME BURADA
-    tab_coord, tab_city = st.tabs(["📍 Koordinat ile", "🏙️ İl/İlçe ile"])
+    tab_city, tab_coord = st.tabs(["🏙️ İl/İlçe ile", "📍 Koordinat ile"])
     
     # 1. KOORDİNAT SEKRESİ
     with tab_coord:
@@ -1016,5 +1016,6 @@ elif page == "❓ Nasıl Yorumlamalı?":
     st.title("❓ Yardım ve Rehber")
     st.error("🔴 KRİTİK RİSK (326+): Çok Yüksek İhtimal."); st.warning("🟠 YÜKSEK RİSK (226-325): Belirgin Stres.")
     st.markdown("🟡 ORTA RİSK (126-225): Takip Edilmeli."); st.success("🟢 DÜŞÜK RİSK (0-125): Olağan.")
+
 
 
